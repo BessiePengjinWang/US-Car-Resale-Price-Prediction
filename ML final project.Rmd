@@ -1,0 +1,491 @@
+---
+title: "Machine Learning Applications in the Automotive Industry: Predictive Modeling for Vehicle Prices and Market Segmentation"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+Data Cleaning & Exploration: loading data, cleaning N.A. values, and visualization through boxplot & correlation plot
+```{r}
+# Load data
+setwd("~/Downloads")
+vehicle <- read.table("vehicle.csv", header = TRUE, sep = ",")
+dim(vehicle)
+
+# Explore dataset
+# head(vehicle)
+# tail(vehicle)
+# summary (vehicle)
+# str (vehicle)
+
+# Check for missing values
+# sum (is.na(vehicle)) # 105
+# Visualize rows with missing values
+# vehicle[!complete.cases(vehicle), ]
+# sum (is.na(vehicle$Engine.HP)) # 69
+# sum (is.na(vehicle$Engine.Cylinders)) # 30
+# sum (is.na(vehicle$Number.of.Doors)) # 6
+
+# Visualize whether the data is skewed to see whether to use mean/median for imputation
+par(mfrow = c(1, 3))
+hist(vehicle$Engine.HP, main = "Engine HP", xlab = "Engine HP", col = "lightblue", border = "black")
+hist(vehicle$Engine.Cylinders, main = "Engine Cylinders", xlab = "Engine Cylinders", col = "lightblue", border = "black")
+hist(vehicle$Number.of.Doors, main = "Number of Doors", xlab = "Number of Doors", col = "lightblue", border = "black")
+# Histogram for Engine.HP Engine.Cylinders are right skewed, so we use median
+
+# Fill in missing values with imputation
+vehicle$Engine.HP[is.na(vehicle$Engine.HP)] <- median(vehicle$Engine.HP, na.rm = TRUE)
+vehicle$Engine.Cylinders[is.na(vehicle$Engine.Cylinders)] <- median(vehicle$Engine.Cylinders, na.rm = TRUE)
+vehicle$Number.of.Doors[is.na(vehicle$Number.of.Doors)] <- mode(vehicle$Number.of.Doors)
+
+# All N.A. values are filled with medians
+# sum (is.na(vehicle)) # 0
+
+numeric_columns <- sapply(vehicle, is.numeric)
+numeric_vehicle <- vehicle[, numeric_columns]
+# Create boxplots for each numeric column for data visualization
+for (column_name in names(numeric_vehicle)) {
+  boxplot(numeric_vehicle[[column_name]], main = column_name, xlab = column_name, col = "lightblue", border = "black")
+  min_val <- min(numeric_vehicle[[column_name]], na.rm = TRUE)
+  median_val <- median(numeric_vehicle[[column_name]], na.rm = TRUE)
+  max_val <- max(numeric_vehicle[[column_name]], na.rm = TRUE)
+  legend("topright", 
+         legend = c(paste("Max: ", round(max_val, 2)), 
+         paste("Median: ", round(median_val, 2)), 
+         paste("Min: ", round(min_val, 2))), 
+         bty = "n", cex = 0.8)
+}
+
+# Visualize variable correlations with correlation plot
+# install.packages("corrplot")
+library(corrplot)
+cor_matrix <- cor(numeric_vehicle, use = "complete.obs")
+# cor_matrix
+corrplot(cor_matrix, method = "circle")
+```
+
+Data visualization: numeric predictors vs. MSRP scatterplot
+```{r}
+library(ggplot2)
+# Scatter plot of year vs MSRP
+ggplot(vehicle, aes(x = Year, y = MSRP)) +
+  geom_point() +
+  labs(title = "Year vs MSRP", x = "Year", y = "MSRP")
+
+# Scatter plot of Engine.HP vs MSRP
+ggplot(vehicle, aes(x = Engine.HP, y = MSRP)) +
+  geom_point() +
+  labs(title = "Engine Horse Power vs MSRP", x = "Engine.HP", y = "MSRP")
+
+# Scatter plot of Engine.Cylinders vs MSRP
+ggplot(vehicle, aes(x = Engine.Cylinders, y = MSRP)) +
+  geom_point() +
+  labs(title = "Engine Cylinders vs MSRP", x = "Engine.Cylinders", y = "MSRP")
+
+# Scatter plot of Number.of.Doors vs MSRP
+ggplot(vehicle, aes(x = Number.of.Doors, y = MSRP)) +
+  geom_point() +
+  labs(title = "Number of Doors vs MSRP", x = "Number.of.Doors", y = "MSRP")
+
+# Scatter plot of highway.MPG vs MSRP
+ggplot(vehicle, aes(x = highway.MPG, y = MSRP)) +
+  geom_point() +
+  labs(title = "Highway Miles Per Gallon vs MSRP", x = "highway.MPG", y = "MSRP")
+
+# Scatter plot of city.mpg vs MSRP
+ggplot(vehicle, aes(x = city.mpg, y = MSRP)) +
+  geom_point() +
+  labs(title = "City Miles per Gallon vs MSRP", x = "city.mpg", y = "MSRP")
+
+# Scatter plot of Popularity vs MSRP
+ggplot(vehicle, aes(x = Popularity, y = MSRP)) +
+  geom_point() +
+  labs(title = "Popularity vs MSRP", x = "Popularity", y = "MSRP")
+```
+
+Filter out numeric dataset with 7 numeric predictors, split data
+```{r}
+# Filter out numeric columns
+numeric_columns <- sapply(vehicle, is.numeric)
+vehicle_numeric <- vehicle[, numeric_columns]
+num_numeric_columns <- length(names(numeric_vehicle))
+
+# Train-test split
+set.seed(123)
+train_size <- floor(0.8 * nrow(vehicle))
+train_index <- sample(seq_len(nrow(vehicle_numeric)), size = train_size)
+train_set <- vehicle_numeric[train_index, ]
+test_set <- vehicle_numeric[-train_index, ]
+# dim (train_set) # 9531    8
+# dim (test_set) # 2383    8
+```
+
+Random forest for feature selection, filter out top 5 feature dataset, split data
+```{r}
+# install.packages("randomForest")
+library(randomForest)
+random_forest_model <- randomForest(MSRP ~ ., data = vehicle, importance = TRUE)
+importance_scores <- importance(random_forest_model)
+sorted_features <- rownames(importance_scores)[order(importance_scores[,"%IncMSE"], decreasing = TRUE)]
+
+# Top 10 features
+top_features <- sorted_features[1:10]
+top_features # "Engine.HP", "Engine.Cylinders", "Market.Category", "Popularity", "Vehicle.Size", "Make", "Model", "Engine.Fuel.Type", "highway.MPG", "Year"
+
+# Selecting top 5 features
+vehicle_selected <- vehicle[, c("Engine.HP", "Popularity", "Vehicle.Size", "Make", "Engine.Fuel.Type", "MSRP")]
+
+# Transforming two categorical variables into factors
+vehicle_selected$Make <- as.factor(vehicle_selected$Make)
+vehicle_selected$Vehicle.Size <- as.factor(vehicle_selected$Vehicle.Size)
+vehicle_selected$Engine.Fuel.Type <- as.factor(vehicle_selected$Engine.Fuel.Type)
+
+# Train-test split
+set.seed(123)
+train_size <- floor(0.8 * nrow(vehicle_selected))
+train_index <- sample(seq_len(nrow(vehicle_selected)), size = train_size)
+train_set_selected <- vehicle_selected[train_index, ]
+test_set_selected <- vehicle_selected[-train_index, ]
+```
+
+Predicting the Resale Value of Vehicles
+(1) Linear: Linear
+```{r}
+# Linear with 7 numeric predictors
+linear_model <- lm(train_set$MSRP ~ ., data = train_set)
+# summary(linear_model)
+
+# Linear with top 5 predictors
+linear_model_selected <- lm(train_set_selected$MSRP ~ ., data = train_set_selected)
+# summary(linear_model_selected)
+```
+
+(1) Nonlinear: Polynomial
+```{r}
+# Polynomial with 7 numeric predictors
+poly_model <- lm(train_set$MSRP ~ poly(Engine.HP, 2) + poly(Engine.Cylinders, 2) + Number.of.Doors + poly(highway.MPG, 2) + poly (city.mpg, 2) + poly(Popularity,2) + poly(Year, 2), data = train_set)
+# summary(poly_model)
+
+# Polynomial with top 5 predictors
+poly_model_selected <- lm(train_set_selected$MSRP ~ poly(Engine.HP, 2) + poly(Popularity, 2) + Vehicle.Size + Make + Engine.Fuel.Type, data = train_set_selected)
+# summary(poly_model_selected)
+```
+
+(2) Ensemble: Random Forest
+```{r}
+# Random Forest
+# install.packages("randomForest")
+library(randomForest)
+rf_model <- randomForest(train_set$MSRP ~ ., data = train_set, ntree = 500)
+# summary(rf_model)
+
+rf_model_selected <- randomForest(train_set_selected$MSRP ~ ., data = train_set_selected, ntree = 500)
+# summary(rf_model_selected)
+```
+
+(2) Ensemble: Gradient Boosting
+```{r}
+# Gradient Boosting
+# install.packages("gbm")
+library(gbm)
+gbm_model <- gbm(train_set$MSRP ~ ., data = train_set, distribution = "gaussian", n.trees = 500, interaction.depth = 3, shrinkage = 0.1, cv.folds = 5)
+# summary(gbm_model)
+
+gbm_model_selected <- gbm(train_set_selected$MSRP ~ ., data = train_set_selected, distribution = "gaussian", n.trees = 500, interaction.depth = 3, shrinkage = 0.1, cv.folds = 5)
+# summary(gbm_model_selected)
+```
+
+(3) Regularized: Ridge
+```{r}
+# install.packages("glmnet")
+library(glmnet)
+
+# Ridge regression with 7 numeric predictors
+train_mat <- as.matrix(train_set)
+ridge_model <- glmnet(train_mat, train_set$MSRP, alpha = 0)
+cv_ridge <- cv.glmnet(train_mat, train_set$MSRP, alpha = 0)
+best_lambda_ridge <- cv_ridge$lambda.min
+# summary (ridge_model)
+
+# Ridge regression with top 5 predictors
+# Convert categorical variables to dummy variables
+train_set_dummy <- model.matrix(MSRP ~ . - 1, data = train_set_selected)
+train_mat_selected <- as.matrix(train_set_dummy)
+ridge_model_selected <- glmnet(train_mat_selected, train_set_selected$MSRP, alpha = 0)
+cv_ridge_selected <- cv.glmnet(train_mat_selected, train_set_selected$MSRP, alpha = 0)
+best_lambda_ridge_selected <- cv_ridge_selected$lambda.min
+# summary (ridge_model_selected)
+```
+
+(3) Regularized: LASSO
+```{r}
+# LASSO regression with 7 numeric predictors
+lasso_model <- glmnet(train_mat, train_set$MSRP, alpha = 1)
+cv_lasso <- cv.glmnet(train_mat, train_set$MSRP, alpha = 1)
+best_lambda_lasso <- cv_lasso$lambda.min
+# summary (lasso_model)
+
+# LASSO regression with top 5 predictors
+lasso_model_selected <- glmnet(train_mat_selected, train_set_selected$MSRP, alpha = 0)
+cv_lasso_selected <- cv.glmnet(train_mat_selected, train_set_selected$MSRP, alpha = 0)
+best_lambda_lasso_selected <- cv_lasso_selected$lambda.min
+# summary (lasso_model_selected)
+```
+
+Model comparison & validation
+(a) Linear & Polynomial
+```{r}
+# Function to calculate evaluation metrics
+evaluate_model <- function(model, test_set) {
+  test_set$predicted_MSRP <- predict(model, newdata = test_set)
+  mse <- mean((test_set$predicted_MSRP - test_set$MSRP)^2)
+  rmse <- sqrt(mse)
+  mae <- mean(abs(test_set$predicted_MSRP - test_set$MSRP))
+  r_squared <- summary(model)$r.squared
+  cat("MSE:", mse, "\nRMSE:", rmse, "\nMAE:", mae, "\nR-squared:", r_squared, "\n\n")
+}
+
+cat("Linear model with 7 numeric predictors metrics:\n")
+evaluate_model(linear_model, test_set)
+
+cat("Linear model with top 5 predictors metrics:\n")
+evaluate_model(linear_model_selected, test_set_selected)
+
+cat("Polynomial model metrics:\n")
+evaluate_model(poly_model, test_set)
+
+cat("Polynomial model metrics:\n")
+evaluate_model(poly_model_selected, test_set_selected)
+```
+
+(b) Random Forest & Gradient Boosting
+``` {r}
+evaluate_rf_model <- function(model, test_set) {
+  test_set$predicted_MSRP <- predict(model, newdata = test_set)
+  mse <- mean((test_set$predicted_MSRP - test_set$MSRP)^2)
+  rmse <- sqrt(mse)
+  mae <- mean(abs(test_set$predicted_MSRP - test_set$MSRP))
+  r_squared <- 1 - (sum((test_set$MSRP - test_set$predicted_MSRP)^2) / sum((test_set$MSRP - mean(test_set$MSRP))^2))
+  cat("MSE:", mse, "\nRMSE:", rmse, "\nMAE:", mae, "\nR-squared:", r_squared, "\n\n")
+}
+cat("Random Forest model metrics:\n")
+evaluate_rf_model(rf_model, test_set)
+
+cat("Random Forest model selected metrics:\n")
+evaluate_rf_model(rf_model_selected, test_set_selected)
+
+evaluate_gbm_model <- function(model, test_set) {
+  test_set$predicted_MSRP <- predict(model, newdata = test_set, n.trees = 500)
+  mse <- mean((test_set$predicted_MSRP - test_set$MSRP)^2)
+  rmse <- sqrt(mse)
+  mae <- mean(abs(test_set$predicted_MSRP - test_set$MSRP))
+  r_squared <- 1 - (sum((test_set$MSRP - test_set$predicted_MSRP)^2) / sum((test_set$MSRP - mean(test_set$MSRP))^2))
+  cat("MSE:", mse, "\nRMSE:", rmse, "\nMAE:", mae, "\nR-squared:", r_squared, "\n\n")
+}
+cat("Gradient Boosting model metrics:\n")
+evaluate_gbm_model(gbm_model, test_set)
+
+cat("Gradient Boosting model metrics:\n")
+evaluate_gbm_model(gbm_model_selected, test_set_selected)
+```
+
+(3) Ridge & LASSO
+```{r}
+evaluate_glmnet_model <- function(model, test_set, alpha, lambda, selected=FALSE) {
+  if (selected) {
+    # convert categorical variables to dummy variables for selected model
+    test_mat <- model.matrix(MSRP ~ . - 1, data = test_set)
+  } else {
+    test_mat <- as.matrix(test_set)
+  }
+  predictions <- predict(model, newx = test_mat, s = lambda, type = "response")
+  test_set$predicted_MSRP <- as.vector(predictions)
+  mse <- mean((test_set$predicted_MSRP - test_set$MSRP)^2)
+  rmse <- sqrt(mse)
+  mae <- mean(abs(test_set$predicted_MSRP - test_set$MSRP))
+  r_squared <- 1 - (sum((test_set$MSRP - test_set$predicted_MSRP)^2) / sum((test_set$MSRP - mean(test_set$MSRP))^2))
+  cat("MSE:",  mse, "\nRMSE:", rmse, "\nMAE:", mae, "\nR-squared:", r_squared, "\n\n")
+}
+
+
+cat("Ridge model with 7 numeric predictors metrics:\n")
+evaluate_glmnet_model(ridge_model, test_set, alpha = 0, lambda = best_lambda_ridge)
+
+cat("Ridge model with top 5 predictors metrics:\n")
+evaluate_glmnet_model(ridge_model_selected, test_set_selected, alpha = 0, lambda = best_lambda_ridge_selected, selected = TRUE)
+
+cat("Lasso model with 7 numeric predictors metrics:\n")
+evaluate_glmnet_model(lasso_model, test_set, alpha = 1, lambda = best_lambda_lasso)
+
+cat("Lasso model with top 5 predictors metrics:\n")
+evaluate_glmnet_model(lasso_model_selected, test_set_selected, alpha = 1, lambda = best_lambda_lasso_selected, selected = TRUE)
+```
+
+Feature Selection
+```{r}
+# Gradient boosting with top 5 predictors
+summary(gbm_model_selected)
+```
+
+
+Clustering Using K-Means
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Scale numeric dataset
+numeric_columns <- sapply(vehicle_numeric, is.numeric)
+data_scaled <- as.data.frame(scale(vehicle_numeric[numeric_columns]))
+
+# Elbow plot
+wss <- sapply(1:10, function(k) {
+  kmeans(data_scaled, centers = k, nstart = 25, iter.max = 100)$tot.withinss
+})
+plot(1:10, wss, type = "b", pch = 19, main = "Elbow plot", xlab = "Number of clusters", ylab = "Within-cluster sum of squares")
+
+# Choose number of clusters
+k <- 4
+# Perform k-means clustering with k
+kmeans_result <- kmeans(data_scaled, centers = k, nstart = 25, iter.max = 100)
+vehicle_numeric$cluster <- as.factor(kmeans_result$cluster)
+```
+
+Visualize with PCA
+```{r}
+pca <- prcomp(data_scaled)
+pca_data <- as.data.frame(pca$x[, 1:2])
+pca_data$cluster <- vehicle_numeric$cluster
+
+# Plot PCA
+ggplot(pca_data, aes(x = PC1, y = PC2, color = cluster)) +
+  geom_point(alpha = 0.6) +
+  labs(title = "Vehicle clusters using PCA", x = "Principal Component 1", y = "Principal Component 2") +
+  theme_minimal()
+
+# plot(pca, type = "l", main = "Screeplot") # Screeplot
+```
+
+```{r}
+# Visualize the distribution of different features within each cluster
+plot_boxplot <- function(column_name) {
+  ggplot(vehicle_numeric, aes_string(x = "cluster", y = column_name, fill = "cluster")) +
+    geom_boxplot() +
+    labs(title = paste(column_name, "by Cluster"), x = "Cluster", y = column_name) +
+    theme_minimal()
+}
+clustering_columns <- colnames(vehicle_numeric)[-ncol(vehicle_numeric)]
+for (column_name in clustering_columns) {
+  print(plot_boxplot(column_name))
+}
+
+ggplot(vehicle_numeric, aes_string(x = "cluster", y = "highway.MPG", fill = "cluster")) +
+    geom_boxplot() +
+    labs(title = paste("highway.MPG (adjusted)", "by Cluster"), x = "Cluster", y = "highway.MPG") +
+    coord_cartesian(ylim = c(0, 125)) +
+    theme_minimal()
+
+ggplot(vehicle_numeric, aes_string(x = "cluster", y = "MSRP", fill = "cluster")) +
+    geom_boxplot() +
+    labs(title = paste("MSRP (adjusted)", "by Cluster"), x = "Cluster", y = "MSRP") +
+    coord_cartesian(ylim = c(0, 100000)) +
+    theme_minimal()
+
+```
+
+Car Recommendation
+```{r}
+# Example usage, user can adjust input values according to their preferences
+customer_preferences <- data.frame(Engine.HP = 5, Engine.Cylinders = 4, Popularity = 100, Year = 2010, Number.of.Doors = 4, highway.MPG = 20, city.mpg = 20, MSRP = 2000)
+
+# Scale dataset
+customer_preferences_scaled <- scale(customer_preferences, center = attr(vehicle_numeric_scaled, "scaled:center"), scale = attr(vehicle_numeric_scaled, "scaled:scale"))
+
+# Compute the distances
+euclidean_distances <- apply(vehicle_numeric_scaled, 1, function(vehicle) sqrt(sum((vehicle - customer_preferences_scaled)^2)))
+distances_and_brands <- data.frame(Distance = euclidean_distances, Brand = vehicle$Make)
+sorted_distances_and_brands <- distances_and_brands[order(distances_and_brands$Distance),]
+
+# Loop for 3 different brands
+top_3_vehicles <- data.frame()
+brands <- c()
+for (i in 1:nrow(sorted_distances_and_brands)) {
+  current_brand <- sorted_distances_and_brands$Brand[i]
+  if (!(current_brand %in% brands)) {
+    top_3_vehicles <- rbind(top_3_vehicles, vehicle[vehicle$Make == current_brand,][1,])
+    brands <- c(brands, current_brand)
+  }
+  if (length(brands) == 3) {
+    break
+  }
+}
+
+top_3_vehicles
+```
+
+Predicting MSRP
+```{r}
+predict_MSRP_lasso <- function(year, engine_hp, engine_cylinders, number_of_doors, highway_mpg, city_mpg, popularity) {
+  user_input <- data.frame(Year = year,
+                           Engine.HP = engine_hp,
+                           Engine.Cylinders = engine_cylinders,
+                           Number.of.Doors = number_of_doors,
+                           highway.MPG = highway_mpg,
+                           city.mpg = city_mpg,
+                           Popularity = popularity
+                           )
+  user_mat <- as.matrix(user_input)
+  predicted_MSRP <- predict(lasso_model, s = best_lambda_lasso, newx = user_mat)
+  return(predicted_MSRP)
+}
+
+predict_MSRP_gbm <- function(year, engine_hp, engine_cylinders, number_of_doors, highway_mpg, city_mpg, popularity, vehicle_size, engine_fuel_type, make) {
+  user_input <- data.frame(Year = year,
+                           Engine.HP = engine_hp,
+                           Engine.Cylinders = engine_cylinders,
+                           Number.of.Doors = number_of_doors,
+                           highway.MPG = highway_mpg,
+                           city.mpg = city_mpg,
+                           Popularity = popularity,
+                           Vehicle.Size = vehicle_size,
+                           Engine.Fuel.Type = engine_fuel_type,
+                           Make = make
+                           )
+  predicted_MSRP <- predict(gbm_model_selected, newdata = user_input, n.trees = 500)
+  return(predicted_MSRP)
+}
+
+# Example usage, user can adjust input values according to their preferences
+year <- 2000
+engine_hp <- 300
+engine_cylinders <- 4
+number_of_doors <- 4
+highway_mpg <- 30
+city_mpg <- 20
+popularity <- 2000
+vehicle_size <- "Compact" # Enter "Compact" "Midsize", or "Large"
+engine_fuel_type <- "diesel" # For simplicity, enter "diesel", "electric", or "natural gas"
+make <- "Volvo" # Enter a car brand, as long as the brand is in the dataset
+
+predicted_MSRP_LASSO <- predict_MSRP_lasso(year, engine_hp, engine_cylinders, number_of_doors, highway_mpg, city_mpg, popularity)
+predicted_MSRP_GB <- predict_MSRP_gbm(year, engine_hp, engine_cylinders, number_of_doors, highway_mpg, city_mpg, popularity, vehicle_size, engine_fuel_type, make)
+cat("Your dream car's price might be around", predicted_MSRP_LASSO, " ~ ", predicted_MSRP_GB)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
