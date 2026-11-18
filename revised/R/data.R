@@ -45,3 +45,7 @@ apply_imputer <- function(vehicle_data, imputer) {
   vehicle_data$Engine.Fuel.Type[vehicle_data$Engine.Fuel.Type == ""] <- "unknown"
   vehicle_data
 }
+
+remove_exact_duplicates <- function(vehicle_data) {
+  vehicle_data[!duplicated(vehicle_data), , drop = FALSE]
+}
