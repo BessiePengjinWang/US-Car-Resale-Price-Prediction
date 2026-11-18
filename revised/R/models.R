@@ -40,10 +40,10 @@ fit_vehicle_model <- function(model_name, training_data, feature_names, factor_l
     fitted$model <- randomForest::randomForest(x = feature_frame, y = target_value, ntree = 500)
   } else {
     training_frame <- cbind(feature_frame, target_value = target_value)
-    boosted <- gbm::gbm(
+    utils::capture.output(boosted <- gbm::gbm(
       target_value ~ ., data = training_frame, distribution = "gaussian", n.trees = 500,
       interaction.depth = 3, shrinkage = 0.1, cv.folds = 5, n.cores = 1, verbose = FALSE
-    )
+    ))
     fitted$model <- boosted
     fitted$best_tree_count <- gbm::gbm.perf(boosted, method = "cv", plot.it = FALSE)
   }
