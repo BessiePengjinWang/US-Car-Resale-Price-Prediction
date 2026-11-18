@@ -138,6 +138,14 @@ Rscript revised/scripts/make_metric_figures.R
 
 Measured total from a clean clone with a fresh package library, excluding package installation: 400 seconds (about 6.7 minutes). Results are written to `revised/results/` and figures to `revised/figures/`.
 
+## R Markdown report
+
+`revised/Project-code-revised.Rmd` repeats the seven parts of the original paper (data exploration, predictor selection, model fitting, comparison, influential factors, clustering, recommendation and price prediction) with the revised functions. The 10-seed tables and the figures are read from `revised/results/` and `revised/figures/`, so run steps 3 to 5 above first. Rendering needs rmarkdown and pandoc and takes about 1 minute (measured 68 seconds, pandoc 3.9):
+
+```bash
+Rscript -e 'rmarkdown::render("revised/Project-code-revised.Rmd")'
+```
+
 ## Repository structure
 
 ```
@@ -156,6 +164,7 @@ revised/
     recommend.R         nearest-vehicle recommender
     predict_price.R     price range tool with input checks
     load_all.R          loads all modules
+  Project-code-revised.Rmd   R Markdown report in the structure of the paper, using the modules below
   scripts/              run_evaluation.R, run_clustering.R, run_demos.R, make_metric_figures.R
   data/                 .gitkeep only, the data file is not tracked
   results/              CSV tables produced by the scripts
