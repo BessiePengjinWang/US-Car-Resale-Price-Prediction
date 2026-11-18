@@ -24,13 +24,28 @@ prepare_feature_frame <- function(vehicle_data, feature_names, factor_levels) {
   assert_no_target_leakage(feature_names)
   feature_frame <- vehicle_data[, feature_names, drop = FALSE]
   for (column_name in intersect(names(factor_levels), feature_names)) {
-    feature_frame[[column_name]] <- factor(feature_frame[[column_name]], levels = factor_levels[[column_name]])
+    known_levels <- factor_levels[[column_name]]
+    values <- as.character(feature_frame[[column_name]])
+    values[!(values %in% known_levels)] <- attr(known_levels, "fallback")
+    feature_frame[[column_name]] <- factor(values, levels = known_levels)
   }
   feature_frame
 }
 
-collect_factor_levels <- function(vehicle_data) {
-  lapply(vehicle_data[, categorical_predictor_names, drop = FALSE], function(column_values) sort(unique(column_values)))
+collect_factor_levels <- function(training_data, minimum_level_count = 5) {
+  lapply(training_data[, categorical_predictor_names, drop = FALSE], function(column_values) {
+    level_counts <- table(column_values)
+    frequent_levels <- names(level_counts)[level_counts >= minimum_level_count]
+    has_rare_levels <- length(frequent_levels) < length(level_counts)
+    if (has_rare_levels) {
+      known_levels <- sort(unique(c(frequent_levels, "Other")))
+      attr(known_levels, "fallback") <- "Other"
+    } else {
+      known_levels <- sort(frequent_levels)
+      attr(known_levels, "fallback") <- names(which.max(level_counts))
+    }
+    known_levels
+  })
 }
 
 build_design_matrix <- function(feature_frame) {

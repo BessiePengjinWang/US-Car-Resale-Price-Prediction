@@ -2,10 +2,11 @@ prepare_split_data <- function(vehicle_data, seed) {
   split <- make_train_test_split(nrow(vehicle_data), seed)
   imputer <- fit_imputer(vehicle_data[split$train_index, ])
   imputed_data <- apply_imputer(vehicle_data, imputer)
+  training_data <- imputed_data[split$train_index, ]
   list(
-    train = imputed_data[split$train_index, ],
+    train = training_data,
     test = imputed_data[split$test_index, ],
-    factor_levels = collect_factor_levels(imputed_data)
+    factor_levels = collect_factor_levels(training_data)
   )
 }
 
