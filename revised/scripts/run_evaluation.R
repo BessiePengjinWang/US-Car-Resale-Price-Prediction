@@ -4,8 +4,10 @@ command_arguments <- commandArgs(trailingOnly = TRUE)
 seed_count <- if (length(command_arguments) >= 1) as.integer(command_arguments[1]) else 10
 worker_count <- if (length(command_arguments) >= 2) as.integer(command_arguments[2]) else 4
 output_prefix <- if (length(command_arguments) >= 3) command_arguments[3] else "main"
+exclude_placeholder_prices <- length(command_arguments) >= 4 && command_arguments[4] == "exclude_placeholder_prices"
 
 vehicle_data <- remove_exact_duplicates(load_vehicle_data())
+if (exclude_placeholder_prices) vehicle_data <- remove_placeholder_prices(vehicle_data)
 cat(sprintf("✓ loaded %d unique rows\n", nrow(vehicle_data)))
 
 started_at <- Sys.time()

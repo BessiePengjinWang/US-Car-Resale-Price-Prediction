@@ -49,3 +49,7 @@ apply_imputer <- function(vehicle_data, imputer) {
 remove_exact_duplicates <- function(vehicle_data) {
   vehicle_data[!duplicated(vehicle_data), , drop = FALSE]
 }
+
+remove_placeholder_prices <- function(vehicle_data, placeholder_price = 2000) {
+  vehicle_data[vehicle_data$MSRP != placeholder_price, , drop = FALSE]
+}
