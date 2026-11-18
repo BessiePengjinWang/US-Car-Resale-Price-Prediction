@@ -78,6 +78,8 @@ Reading the table:
 - Differences of a few hundredths in R2 between neighbouring rows are smaller than the seed-to-seed standard deviation and should not be read as a ranking. Random forest and gradient boosting are not separable.
 - Removing the 748 rows with the placeholder price 2000 lowers R2 by 0.01 to 0.05 depending on the model and keeps tree ensembles ahead of the linear family. Full table: `revised/results/no_placeholder_metrics_summary.csv`.
 
+Figures of these tables: `revised/figures/metrics_r_squared.png`, `metrics_mae.png` and `metrics_r_squared_by_seed.png`.
+
 Clustering (`revised/results/cluster_profile.csv`, figures in `revised/figures/`): 66 electric cars form their own segment. The remaining 11,132 cars are split into 6 segments, chosen by silhouette width. The best mean silhouette is only 0.31, which indicates weak, overlapping groups, so the segments should be read as rough descriptions, not as sharply separated buyer types.
 
 ## Limitations
@@ -128,6 +130,12 @@ Rscript revised/scripts/run_clustering.R
 Rscript revised/scripts/run_demos.R
 ```
 
+6. Draw the metric comparison figures from the saved result tables (a few seconds, needs no data file):
+
+```bash
+Rscript revised/scripts/make_metric_figures.R
+```
+
 Measured total from a clean clone with a fresh package library, excluding package installation: 400 seconds (about 6.7 minutes). Results are written to `revised/results/` and figures to `revised/figures/`.
 
 ## Repository structure
@@ -148,7 +156,7 @@ revised/
     recommend.R         nearest-vehicle recommender
     predict_price.R     price range tool with input checks
     load_all.R          loads all modules
-  scripts/              run_evaluation.R, run_clustering.R, run_demos.R
+  scripts/              run_evaluation.R, run_clustering.R, run_demos.R, make_metric_figures.R
   data/                 .gitkeep only, the data file is not tracked
   results/              CSV tables produced by the scripts
   figures/              PNG figures with a light background
