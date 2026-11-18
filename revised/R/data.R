@@ -24,3 +24,24 @@ load_vehicle_data <- function(data_path = resolve_data_path()) {
   }
   vehicle_data[, expected_columns]
 }
+
+statistical_mode <- function(values) {
+  value_counts <- table(values[!is.na(values)])
+  as.numeric(names(value_counts)[which.max(value_counts)])
+}
+
+fit_imputer <- function(training_data) {
+  list(
+    median_horsepower = median(training_data$Engine.HP, na.rm = TRUE),
+    median_cylinders = median(training_data$Engine.Cylinders, na.rm = TRUE),
+    mode_doors = statistical_mode(training_data$Number.of.Doors)
+  )
+}
+
+apply_imputer <- function(vehicle_data, imputer) {
+  vehicle_data$Engine.HP[is.na(vehicle_data$Engine.HP)] <- imputer$median_horsepower
+  vehicle_data$Engine.Cylinders[is.na(vehicle_data$Engine.Cylinders)] <- imputer$median_cylinders
+  vehicle_data$Number.of.Doors[is.na(vehicle_data$Number.of.Doors)] <- imputer$mode_doors
+  vehicle_data$Engine.Fuel.Type[vehicle_data$Engine.Fuel.Type == ""] <- "unknown"
+  vehicle_data
+}
