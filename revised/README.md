@@ -144,7 +144,7 @@ Rscript -e 'install.packages(c("glmnet", "gbm", "randomForest", "ggplot2", "clus
 | Business analysis (out-of-fold price model, brand premium, flags) | `Rscript revised/scripts/run_business_analysis.R` | 243 s |
 | Metric comparison figures | `Rscript revised/scripts/make_metric_figures.R` | 1 s |
 
-4. Render the report (needs rmarkdown and pandoc; RStudio bundles pandoc and its Knit button needs no setup). The report reads the tables and figures from step 3 and fits the listing price checker once (about 45 seconds):
+4. Render the report (needs rmarkdown and pandoc; RStudio bundles pandoc and its Knit button needs no setup). The report reads the tables and figures from step 3, fits the listing price checker once, and renders in about 45 seconds (measured from a clean clone):
 
 ```bash
 Rscript -e 'rmarkdown::render("revised/Project-code-revised.Rmd")'
