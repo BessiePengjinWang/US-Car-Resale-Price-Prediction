@@ -54,7 +54,7 @@ measure_interval_coverage <- function(actual_prices, predicted_prices, seed = 1,
   mean(actual_prices[held_out] >= intervals$lower_price & actual_prices[held_out] <= intervals$upper_price)
 }
 
-estimate_brand_premium <- function(vehicle_data, reference_brand = "Chevrolet", minimum_vehicle_count = 20) {
+fit_log_price_regression <- function(vehicle_data, reference_brand = "Chevrolet", minimum_vehicle_count = 20) {
   brand_counts <- table(vehicle_data$Make)
   kept_brands <- names(brand_counts)[brand_counts >= minimum_vehicle_count]
   analysis_data <- vehicle_data[vehicle_data$Make %in% kept_brands, ]
@@ -66,13 +66,19 @@ estimate_brand_premium <- function(vehicle_data, reference_brand = "Chevrolet", 
       Vehicle.Size + Vehicle.Style + Engine.Fuel.Type + Transmission.Type + Driven_Wheels,
     data = analysis_data
   )
-  coefficients_table <- summary(model)$coefficients
+  list(model = model, brand_counts = brand_counts)
+}
+
+estimate_brand_premium <- function(vehicle_data, reference_brand = "Chevrolet", minimum_vehicle_count = 20) {
+  regression <- fit_log_price_regression(vehicle_data, reference_brand, minimum_vehicle_count)
+  coefficients_table <- summary(regression$model)$coefficients
   brand_rows <- grep("^Make", rownames(coefficients_table))
   estimates <- coefficients_table[brand_rows, "Estimate"]
   standard_errors <- coefficients_table[brand_rows, "Std. Error"]
+  brand_names <- sub("^Make", "", rownames(coefficients_table)[brand_rows])
   premium_table <- data.frame(
-    brand = sub("^Make", "", rownames(coefficients_table)[brand_rows]),
-    vehicle_count = as.integer(brand_counts[sub("^Make", "", rownames(coefficients_table)[brand_rows])]),
+    brand = brand_names,
+    vehicle_count = as.integer(regression$brand_counts[brand_names]),
     premium_percent = 100 * (exp(estimates) - 1),
     lower_percent = 100 * (exp(estimates - 1.96 * standard_errors) - 1),
     upper_percent = 100 * (exp(estimates + 1.96 * standard_errors) - 1)
@@ -80,8 +86,31 @@ estimate_brand_premium <- function(vehicle_data, reference_brand = "Chevrolet", 
   premium_table <- premium_table[order(-premium_table$premium_percent), ]
   rownames(premium_table) <- NULL
   attr(premium_table, "reference_brand") <- reference_brand
-  attr(premium_table, "adjusted_r_squared_log_price") <- summary(model)$adj.r.squared
+  attr(premium_table, "adjusted_r_squared_log_price") <- summary(regression$model)$adj.r.squared
   premium_table
+}
+
+estimate_specification_effects <- function(vehicle_data, reference_brand = "Chevrolet", minimum_vehicle_count = 20) {
+  regression <- fit_log_price_regression(vehicle_data, reference_brand, minimum_vehicle_count)
+  coefficients_table <- summary(regression$model)$coefficients
+  effect_definitions <- data.frame(
+    term = c("log_horsepower", "Year", "Engine.Cylinders", "Number.of.Doors", "highway.MPG", "city.mpg"),
+    description = c("10 percent more horsepower", "one model year later", "one more cylinder", "one more door", "one more highway MPG", "one more city MPG"),
+    multiplier = c(log(1.1), 1, 1, 1, 1, 1)
+  )
+  rows <- lapply(seq_len(nrow(effect_definitions)), function(row_index) {
+    term_name <- effect_definitions$term[row_index]
+    multiplier <- effect_definitions$multiplier[row_index]
+    estimate <- coefficients_table[term_name, "Estimate"] * multiplier
+    margin <- 1.96 * coefficients_table[term_name, "Std. Error"] * multiplier
+    data.frame(
+      change = effect_definitions$description[row_index],
+      price_change_percent = 100 * (exp(estimate) - 1),
+      lower_percent = 100 * (exp(estimate - margin) - 1),
+      upper_percent = 100 * (exp(estimate + margin) - 1)
+    )
+  })
+  do.call(rbind, rows)
 }
 
 estimate_brand_premium_with_sensitivity <- function(vehicle_data, main_minimum_year = 2012, reference_brand = "Chevrolet", minimum_vehicle_count = 20) {
