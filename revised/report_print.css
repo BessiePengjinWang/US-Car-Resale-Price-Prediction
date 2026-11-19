@@ -1,0 +1,6 @@
+@media print {
+  h1, h2, h3 { break-after: avoid; }
+  table, img, figure { break-inside: avoid; }
+  tr { break-inside: avoid; }
+  body { font-size: 11pt; }
+}
