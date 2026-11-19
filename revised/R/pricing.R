@@ -36,7 +36,9 @@ fit_error_intervals <- function(actual_prices, predicted_prices, band_breaks = d
 }
 
 apply_error_intervals <- function(predicted_prices, interval_table) {
-  bands <- assign_price_band(predicted_prices, attr(interval_table, "band_breaks"))
+  band_breaks <- attr(interval_table, "band_breaks")
+  if (is.null(band_breaks)) band_breaks <- default_price_band_breaks
+  bands <- assign_price_band(predicted_prices, band_breaks)
   matched <- interval_table[match(as.character(bands), interval_table$price_band), ]
   data.frame(
     predicted_price = predicted_prices,
@@ -146,13 +148,17 @@ specification_field_names <- c(
   "Vehicle.Size", "Vehicle.Style", "Engine.Fuel.Type", "Transmission.Type", "Driven_Wheels"
 )
 
-build_listing_price_checker <- function(vehicle_data, seed = 1) {
+build_listing_price_checker <- function(vehicle_data, seed = 1, interval_table = NULL) {
   imputed_data <- apply_imputer(vehicle_data, fit_imputer(vehicle_data))
   factor_levels <- collect_factor_levels(imputed_data)
-  out_of_fold <- out_of_fold_predictions(vehicle_data, "random_forest", pricing_feature_names, "log", seed = seed)
+  out_of_fold <- NULL
+  if (is.null(interval_table)) {
+    out_of_fold <- out_of_fold_predictions(vehicle_data, "random_forest", pricing_feature_names, "log", seed = seed)
+    interval_table <- fit_error_intervals(vehicle_data$MSRP, out_of_fold)
+  }
   list(
     model = fit_vehicle_model("random_forest", imputed_data, pricing_feature_names, factor_levels, seed, "log"),
-    interval_table = fit_error_intervals(vehicle_data$MSRP, out_of_fold),
+    interval_table = interval_table,
     out_of_fold_predictions = out_of_fold,
     reference_data = imputed_data,
     brand_popularity = tapply(imputed_data$Popularity, imputed_data$Make, median),
