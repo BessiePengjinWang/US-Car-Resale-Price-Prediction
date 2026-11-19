@@ -103,7 +103,8 @@ flag_priced_versus_spec <- function(vehicle_data, predicted_prices, minimum_year
   review_data <- vehicle_data[, c("Make", "Model", "Year", "Engine.HP", "Engine.Cylinders", "Vehicle.Style", "MSRP")]
   review_data$predicted_price <- predicted_prices
   review_data$list_to_predicted_ratio <- review_data$MSRP / predicted_prices
-  review_data <- review_data[vehicle_data$Year >= minimum_year, ]
+  has_original_values <- complete.cases(vehicle_data[, c("Engine.HP", "Engine.Cylinders", "Number.of.Doors")])
+  review_data <- review_data[vehicle_data$Year >= minimum_year & has_original_values, ]
   review_data <- review_data[order(review_data$list_to_predicted_ratio), ]
   rownames(review_data) <- NULL
   list(below_spec = head(review_data, flag_count), above_spec = tail(review_data, flag_count)[flag_count:1, ])
