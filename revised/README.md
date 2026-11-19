@@ -150,11 +150,23 @@ Rscript -e 'install.packages(c("glmnet", "gbm", "randomForest", "ggplot2", "clus
 Rscript -e 'rmarkdown::render("revised/Project-code-revised.Rmd")'
 ```
 
+5. Optional: render a PDF version without code (needs the pagedown package and Google Chrome; no LaTeX is required). The script renders an HTML copy in a temporary folder and prints it to PDF with Chrome, which takes about 50 seconds (measured on the final report, not from a clean clone):
+
+```bash
+Rscript -e 'install.packages("pagedown")'
+```
+
+```bash
+Rscript revised/scripts/render_report_pdf.R
+```
+
+The PDF is written to `revised/Project-code-revised.pdf` and is not tracked by git.
+
 From a clean clone, the six scripts reproduced every committed table and figure exactly (a rerun changed no tracked file except one figure whose random jitter had no seed; that is fixed).
 
 ## R Markdown report
 
-`revised/Project-code-revised.Rmd` is a business-oriented report: the question and data, data checks that changed the numbers, how well list prices can be predicted, what drives list price (brand premium, specification effects), a listing price checker with a review list, market segments, and conclusions with recommendations. Every table and number is read from `revised/results/` or computed live, and each result is followed by a plain-language statement of what it means. Code is folded by default in the HTML output. The recommendation and price range demos from the original project remain available in `revised/scripts/run_demos.R` and are not part of the report.
+`revised/Project-code-revised.Rmd` is a business-oriented report: the question and data, data checks that changed the numbers, how well list prices can be predicted, what drives list price (brand premium, specification effects), a listing price checker with a review list, market segments, and conclusions with recommendations. Every table and number is read from `revised/results/` or computed live, and each result is followed by a plain-language statement of what it means. Code is folded by default in the HTML output and hidden in the PDF version. The recommendation and price range demos from the original project remain available in `revised/scripts/run_demos.R` and are not part of the report.
 
 ## Repository structure
 
@@ -176,7 +188,8 @@ revised/
     pricing.R           listing price checker, error intervals, brand premium, specification effects, review list
     load_all.R          loads all modules
   Project-code-revised.Rmd   business-oriented R Markdown report using the modules above
-  scripts/              run_evaluation.R, run_clustering.R, run_demos.R, run_business_analysis.R, make_metric_figures.R
+  report_print.css      print layout used for the PDF version
+  scripts/              run_evaluation.R, run_clustering.R, run_demos.R, run_business_analysis.R, make_metric_figures.R, render_report_pdf.R
   data/                 .gitkeep only, the data file is not tracked
   results/              CSV tables produced by the scripts
   figures/              PNG figures with a light background
