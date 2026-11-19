@@ -318,13 +318,54 @@ segment_labels <- c(rep("electric", nrow(vehicle_groups$electric)), paste0("segm
 profile_segments(clustered_data, segment_labels)
 ```
 
-The table shows the median of each variable in each segment. Reading it:
+The table shows the median of each variable in each segment. The next table adds the evidence behind the descriptions below: the largest brands, the share of two-door cars, the share of cars at the 2,000 dollar placeholder price, and the spread of price and model year.
 
-- `electric`: 66 cars with 0 cylinders and about 100 highway MPG-equivalent. A real group, but defined by fuel type.
-- `segment_3`: 871 cars with a median of 510 horsepower, 8 cylinders and a median price above 140,000 dollars. Performance and luxury cars.
-- `segment_5`: 1,797 cars with a median model year of 1998 and a median price of about 2,500 dollars. Older cars, many of them at the 2000 dollar placeholder price.
-- `segment_4`: 882 cars with popularity 5,657. This is a single brand's popularity value, so this segment partly reflects one brand.
-- `segment_1`, `segment_2`, `segment_6`: mid-priced newer cars separated mainly by engine size and fuel economy.
+```{r part6-segment-detail}
+segment_frame <- clustered_data
+segment_frame$segment <- segment_labels
+describe_segment <- function(segment_data) {
+  make_shares <- head(sort(table(segment_data$Make), decreasing = TRUE) / nrow(segment_data), 3)
+  data.frame(
+    vehicle_count = nrow(segment_data),
+    top_makes = paste(sprintf("%s %.0f%%", names(make_shares), 100 * make_shares), collapse = ", "),
+    two_door_share = round(mean(segment_data$Number.of.Doors == 2), 2),
+    placeholder_price_share = round(mean(segment_data$MSRP == 2000), 2),
+    MSRP_quartiles = paste(round(quantile(segment_data$MSRP, c(0.25, 0.5, 0.75))), collapse = " / "),
+    year_quartiles = paste(quantile(segment_data$Year, c(0.25, 0.5, 0.75)), collapse = " / ")
+  )
+}
+do.call(rbind, lapply(split(segment_frame, segment_frame$segment), describe_segment))
+```
+
+Reading both tables:
+
+- `electric`: 66 cars with 0 cylinders and about 100 highway MPG-equivalent, led by Tesla (27 percent). A real group, but defined by fuel type.
+- `segment_1`: 3,397 four-door cars (SUVs and sedans) with a median of 290 horsepower and 6 cylinders. The largest segment, priced around 38,000 dollars.
+- `segment_2`: 1,236 cars that are all two-door (coupes and convertibles) with 4 cylinders, priced around 31,000 dollars.
+- `segment_3`: 871 cars with a median of 510 horsepower, 8 cylinders and a median price above 140,000 dollars. The largest brands are Mercedes-Benz, Aston Martin, Chevrolet and Bentley, which fits a performance and luxury group. The price spread inside this segment is very wide (quartiles from about 85,000 to 222,000 dollars).
+- `segment_4`: 882 cars, 85 percent of them Ford and the rest BMW. Their popularity values (5,657 for Ford, 3,916 for BMW) are very large compared with the other brands, so this segment is created by the popularity variable, which is a brand label. It is not a market segment.
+- `segment_5`: 1,797 cars with a median model year of 1998 and a median price of about 2,500 dollars. About 37 percent of them sit at the 2,000 dollar placeholder price, so part of this segment is defined by the questionable price floor, not by the cars.
+- `segment_6`: 2,949 four-door cars with 4 cylinders, the smallest engines (median 173 horsepower) and the best fuel economy of the combustion groups (32 highway, 24 city), priced around 25,000 dollars.
+
+How stable are these groups? The check below re-runs k-means with ten other random starts and compares each result with the first one using the adjusted Rand index (1 means identical groups, 0 means no agreement beyond chance).
+
+```{r part6-stability}
+adjusted_rand_index <- function(first_labels, second_labels) {
+  pair_count <- function(counts) sum(counts * (counts - 1) / 2)
+  contingency <- table(first_labels, second_labels)
+  agreeing_pairs <- pair_count(contingency)
+  first_pairs <- pair_count(rowSums(contingency))
+  second_pairs <- pair_count(colSums(contingency))
+  expected_pairs <- first_pairs * second_pairs / pair_count(sum(contingency))
+  (agreeing_pairs - expected_pairs) / (0.5 * (first_pairs + second_pairs) - expected_pairs)
+}
+rand_indices <- sapply(2:11, function(seed) {
+  adjusted_rand_index(clustering$fit$cluster, cluster_combustion_vehicles(vehicle_groups$combustion, chosen_cluster_count, seed)$fit$cluster)
+})
+round(rand_indices, 3)
+```
+
+Nine of the ten re-runs reproduce the same groups almost exactly (index 0.989 or higher). One run finds a different arrangement (0.634), so the partition is stable but not guaranteed, and a different random start can occasionally land in another solution. The choice of six clusters is also modest: six has the highest mean silhouette (about 0.31) on five different subsamples, but five and eight clusters score about 0.29, so the data do not strongly prefer six.
 
 ```{r part6-pca, fig.height=5.5}
 principal_components <- prcomp(clustering$scaled_matrix)
@@ -338,7 +379,7 @@ ggplot(pca_table, aes(PC1, PC2, colour = segment)) +
   light_theme
 ```
 
-The best mean silhouette width is about 0.31, and the segments overlap in the plot. They are rough descriptions of the market, not sharply separated buyer types, so the buyer-persona labels used in the original paper are not repeated here.
+The best mean silhouette width is about 0.31, and the segments overlap in the plot. They are rough descriptions of the market, not sharply separated buyer types. Two of the six combustion segments (`segment_4` and `segment_5`) are driven mostly by artifacts in the data, a brand-level popularity value and placeholder prices, so the buyer-persona labels used in the original paper are not repeated here.
 
 ## Part VII. Car recommendation and price prediction
 
