@@ -1,8 +1,7 @@
-"segment","vehicle_count","Year","Engine.HP","Engine.Cylinders","Number.of.Doors","highway.MPG","city.mpg","Popularity","MSRP"
-"electric",66,2015,239,0,4,101,121,1391,36285
-"segment_1",3397,2015,290,6,4,23,17,1385,38125
-"segment_2",1236,2015,220,4,2,28.5,20,1385,31207.5
-"segment_3",871,2015,510,8,2,20,13,1158,141300
-"segment_4",882,2015,275,6,4,23,16,5657,32155
-"segment_5",1797,1998,175,6,4,23,17,617,2529
-"segment_6",2949,2015,173,4,4,32,24,1013,24895
+"segment","vehicle_count","Year","Engine.HP","Engine.Cylinders","Number.of.Doors","highway.MPG","city.mpg","MSRP"
+"electric",66,2015,239,0,4,101,121,36285
+"Four-door, 4-cyl, ~175 HP",3046,2015,175,4,4,32,24,25150
+"Four-door, 6-cyl, ~296 HP",3466,2015,296,6,4,23,17,39300
+"Mixed doors, 6-cyl, ~200 HP, years ~2002",1697,2002,200,6,4,22,16,21580
+"Mixed doors, high-output, ~510 HP",864,2015,510,8,2,20,13,141300
+"Two-door, 4-cyl, ~220 HP",1311,2015,220,4,2,28,20,31090
