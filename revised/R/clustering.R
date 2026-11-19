@@ -1,12 +1,14 @@
-clustering_feature_names <- c("Year", "Engine.HP", "Engine.Cylinders", "Number.of.Doors", "highway.MPG", "city.mpg", "Popularity")
+clustering_feature_names <- c("Year", "Engine.HP", "Engine.Cylinders", "Number.of.Doors", "highway.MPG", "city.mpg")
 
-split_electric_vehicles <- function(vehicle_data, implausible_mpg_limit = 100) {
+split_electric_vehicles <- function(vehicle_data, implausible_mpg_limit = 100, placeholder_price = 2000) {
   is_electric <- vehicle_data$Engine.Fuel.Type == "electric"
   is_implausible <- !is_electric & vehicle_data$highway.MPG > implausible_mpg_limit
+  is_placeholder <- !is_electric & !is_implausible & vehicle_data$MSRP == placeholder_price
   list(
     electric = vehicle_data[is_electric, , drop = FALSE],
-    combustion = vehicle_data[!is_electric & !is_implausible, , drop = FALSE],
-    implausible = vehicle_data[is_implausible, , drop = FALSE]
+    combustion = vehicle_data[!is_electric & !is_implausible & !is_placeholder, , drop = FALSE],
+    implausible = vehicle_data[is_implausible, , drop = FALSE],
+    placeholder_price = vehicle_data[is_placeholder, , drop = FALSE]
   )
 }
 
@@ -48,4 +50,18 @@ profile_segments <- function(vehicle_data, segment_labels) {
   })
   profile_table <- as.data.frame(do.call(rbind, profile_rows))
   cbind(segment = rownames(profile_table), profile_table, row.names = NULL)
+}
+
+name_segments <- function(segment_data, segment_ids) {
+  segment_names <- vapply(sort(unique(segment_ids)), function(segment_id) {
+    members <- segment_data[segment_ids == segment_id, ]
+    two_door_share <- mean(members$Number.of.Doors == 2)
+    body_phrase <- if (two_door_share >= 0.9) "Two-door" else if (two_door_share <= 0.1) "Four-door" else "Mixed doors"
+    median_horsepower <- round(median(members$Engine.HP))
+    power_phrase <- if (median_horsepower >= 400) "high-output" else sprintf("%d-cyl", round(median(members$Engine.Cylinders)))
+    era_phrase <- if (median(members$Year) < 2008) sprintf(", years ~%d", round(median(members$Year))) else ""
+    sprintf("%s, %s, ~%d HP%s", body_phrase, power_phrase, median_horsepower, era_phrase)
+  }, character(1))
+  names(segment_names) <- sort(unique(segment_ids))
+  segment_names
 }
