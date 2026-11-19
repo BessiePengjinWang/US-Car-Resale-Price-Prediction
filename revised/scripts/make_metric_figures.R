@@ -51,7 +51,7 @@ seed_table <- by_seed_table[by_seed_table$target_scale == "dollars" & by_seed_ta
 seed_table$model <- factor(seed_table$model, levels = model_order)
 seed_plot <- ggplot(seed_table, aes(model, R2)) +
   geom_boxplot(outlier.shape = NA, fill = "#DDDDDD") +
-  geom_jitter(width = 0.12, height = 0, size = 1.6, colour = "#F58518") +
+  geom_point(position = position_jitter(width = 0.12, height = 0, seed = 1), size = 1.6, colour = "#F58518") +
   labs(title = "R-squared for each of the 10 splits (numeric_plus_make, price predicted directly)",
        subtitle = "Each dot is one seed. The spread shows how much a single split can mislead.",
        x = NULL, y = "R-squared") +
