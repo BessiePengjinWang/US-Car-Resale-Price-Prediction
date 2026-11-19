@@ -29,7 +29,7 @@ This document follows the structure of the original paper (`Project-paper.pdf`) 
 
 One point of wording: the target `MSRP` is the manufacturer's suggested retail price, a new-car list price. It is not a used-car resale price, so the results describe list prices only.
 
-The analysis has seven parts:
+The analysis has eight parts:
 
 1. Data collection and exploration
 2. Predictor selection
@@ -38,6 +38,9 @@ The analysis has seven parts:
 5. Influential factors
 6. Clustering
 7. Car recommendation and price prediction
+8. Business decisions: is a list price in line with the specification?
+
+The first seven parts mirror the original paper. Part 8 is new and turns the models into decision support for a pricing and product-planning analyst at a manufacturer or dealer group.
 
 Everything that takes minutes (the 10-seed comparison) is read from the saved tables in `revised/results/`, produced by `revised/scripts/run_evaluation.R`. Everything else is computed live in this document.
 
@@ -290,46 +293,56 @@ Brand (about 50 percent) and horsepower (about 29 percent) dominate, as in the p
 Changes from the original clustering:
 
 - MSRP is no longer a clustering input. It is only used to describe the segments afterwards.
-- The 66 electric cars (0 cylinders, about 100 MPG-equivalent) are set aside as their own segment. In the original they formed a small cluster that the paper called "Modern Efficiency Advocates".
-- One Audi A6 row with 354 highway MPG, almost certainly a data entry error, is left out of the clustering.
+- Popularity is no longer an input either. It holds one value per brand, and in the first revision it created a segment that was 85 percent Ford.
+- The 748 cars at the 2,000 dollar placeholder price are set aside, because 37 percent of one segment was made of them.
+- The 66 electric cars (0 cylinders, about 100 MPG-equivalent) are their own segment. In the original they formed a small cluster that the paper called "Modern Efficiency Advocates".
+- One Audi A6 row with 354 highway MPG, almost certainly a data entry error, is left out.
 - The number of clusters is chosen by silhouette width instead of being fixed at 4 after an elbow plot with no visible elbow.
+- Segments are named from measurable attributes only (doors, cylinders, horsepower, model years). The names say what the cars are, not how good they are.
 
 ```{r part6-split-electric}
 vehicle_groups <- split_electric_vehicles(imputed_data)
 sapply(vehicle_groups, nrow)
 ```
 
+The silhouette table averages five random subsamples (saved by `run_clustering.R`):
+
 ```{r part6-choose-k}
-combustion_features <- vehicle_groups$combustion[, clustering_feature_names]
-scaled_features <- scale_with_reference(combustion_features, colMeans(combustion_features), apply(combustion_features, 2, sd))
-silhouette_table <- choose_cluster_count(scaled_features)
+silhouette_table <- read.csv(file.path("revised", "results", "cluster_silhouette.csv"))
 silhouette_table
+chosen_cluster_count <- silhouette_table$cluster_count[which.max(silhouette_table$mean_silhouette)]
+chosen_cluster_count
 ggplot(silhouette_table, aes(cluster_count, mean_silhouette)) +
+  geom_ribbon(aes(ymin = min_silhouette, ymax = max_silhouette), fill = "#DDDDDD") +
   geom_line() + geom_point() +
-  labs(title = "Silhouette by number of clusters", x = "Number of clusters", y = "Mean silhouette width") +
+  labs(title = "Silhouette by number of clusters (line: mean, band: range over five subsamples)", x = "Number of clusters", y = "Mean silhouette width") +
   light_theme
 ```
 
 ```{r part6-cluster}
-chosen_cluster_count <- silhouette_table$cluster_count[which.max(silhouette_table$mean_silhouette)]
 clustering <- cluster_combustion_vehicles(vehicle_groups$combustion, chosen_cluster_count)
+combustion_ids <- paste0("segment_", clustering$fit$cluster)
+segment_names <- name_segments(vehicle_groups$combustion, combustion_ids)
 clustered_data <- rbind(vehicle_groups$electric, vehicle_groups$combustion)
-segment_labels <- c(rep("electric", nrow(vehicle_groups$electric)), paste0("segment_", clustering$fit$cluster))
+segment_labels <- c(rep("electric", nrow(vehicle_groups$electric)), unname(segment_names[combustion_ids]))
 profile_segments(clustered_data, segment_labels)
 ```
 
-The table shows the median of each variable in each segment. The next table adds the evidence behind the descriptions below: the largest brands, the share of two-door cars, the share of cars at the 2,000 dollar placeholder price, and the spread of price and model year.
+The table shows the median of each variable in each segment. The next table adds the evidence behind the descriptions below: the largest brands and body styles, the share of two-door cars, and the spread of price and model year.
 
 ```{r part6-segment-detail}
 segment_frame <- clustered_data
 segment_frame$segment <- segment_labels
 describe_segment <- function(segment_data) {
-  make_shares <- head(sort(table(segment_data$Make), decreasing = TRUE) / nrow(segment_data), 3)
+  top_shares <- function(values) {
+    shares <- head(sort(table(values), decreasing = TRUE) / length(values), 3)
+    paste(sprintf("%s %.0f%%", names(shares), 100 * shares), collapse = ", ")
+  }
   data.frame(
     vehicle_count = nrow(segment_data),
-    top_makes = paste(sprintf("%s %.0f%%", names(make_shares), 100 * make_shares), collapse = ", "),
+    top_makes = top_shares(segment_data$Make),
+    top_styles = top_shares(segment_data$Vehicle.Style),
     two_door_share = round(mean(segment_data$Number.of.Doors == 2), 2),
-    placeholder_price_share = round(mean(segment_data$MSRP == 2000), 2),
     MSRP_quartiles = paste(round(quantile(segment_data$MSRP, c(0.25, 0.5, 0.75))), collapse = " / "),
     year_quartiles = paste(quantile(segment_data$Year, c(0.25, 0.5, 0.75)), collapse = " / ")
   )
@@ -339,13 +352,12 @@ do.call(rbind, lapply(split(segment_frame, segment_frame$segment), describe_segm
 
 Reading both tables:
 
-- `electric`: 66 cars with 0 cylinders and about 100 highway MPG-equivalent, led by Tesla (27 percent). A real group, but defined by fuel type.
-- `segment_1`: 3,397 four-door cars (SUVs and sedans) with a median of 290 horsepower and 6 cylinders. The largest segment, priced around 38,000 dollars.
-- `segment_2`: 1,236 cars that are all two-door (coupes and convertibles) with 4 cylinders, priced around 31,000 dollars.
-- `segment_3`: 871 cars with a median of 510 horsepower, 8 cylinders and a median price above 140,000 dollars. The largest brands are Mercedes-Benz, Aston Martin, Chevrolet and Bentley, which fits a performance and luxury group. The price spread inside this segment is very wide (quartiles from about 85,000 to 222,000 dollars).
-- `segment_4`: 882 cars, 85 percent of them Ford and the rest BMW. Their popularity values (5,657 for Ford, 3,916 for BMW) are very large compared with the other brands, so this segment is created by the popularity variable, which is a brand label. It is not a market segment.
-- `segment_5`: 1,797 cars with a median model year of 1998 and a median price of about 2,500 dollars. About 37 percent of them sit at the 2,000 dollar placeholder price, so part of this segment is defined by the questionable price floor, not by the cars.
-- `segment_6`: 2,949 four-door cars with 4 cylinders, the smallest engines (median 173 horsepower) and the best fuel economy of the combustion groups (32 highway, 24 city), priced around 25,000 dollars.
+- **Electric** (66 cars): 0 cylinders, about 100 highway MPG-equivalent, led by Tesla (27 percent), mostly hatchbacks and sedans. Defined by fuel type.
+- **Four-door, 4-cylinder, about 175 HP** (3,046 cars): sedans and SUVs with the best fuel economy among the combustion segments (32 highway, 24 city), median list price about 25,000 dollars.
+- **Four-door, 6-cylinder, about 296 HP** (3,466 cars): mainly SUVs and sedans, median list price about 39,000 dollars.
+- **Two-door, 4-cylinder, about 220 HP** (1,311 cars): all two-door, mostly coupes and convertibles, median list price about 31,000 dollars.
+- **Mixed doors, high-output, about 510 HP** (864 cars): 77 percent two-door, coupes and convertibles, median list price about 141,000 dollars with a very wide spread (quartiles from about 84,000 to 222,000 dollars).
+- **Mixed doors, 6-cylinder, about 200 HP, years about 2002** (1,697 cars): the model-year range is the defining feature (quartiles 1999 to 2005), with the widest price spread at the low end.
 
 How stable are these groups? The check below re-runs k-means with ten other random starts and compares each result with the first one using the adjusted Rand index (1 means identical groups, 0 means no agreement beyond chance).
 
@@ -365,21 +377,20 @@ rand_indices <- sapply(2:11, function(seed) {
 round(rand_indices, 3)
 ```
 
-Nine of the ten re-runs reproduce the same groups almost exactly (index 0.989 or higher). One run finds a different arrangement (0.634), so the partition is stable but not guaranteed, and a different random start can occasionally land in another solution. The choice of six clusters is also modest: six has the highest mean silhouette (about 0.31) on five different subsamples, but five and eight clusters score about 0.29, so the data do not strongly prefer six.
+All ten re-runs reproduce the same groups almost exactly (index 0.993 or higher). Five clusters have the highest mean silhouette (about 0.35) on all five subsamples, ahead of seven clusters (about 0.34). The value is still modest and the groups overlap in the plot below, so the segments describe where the specification mix concentrates; they are not sharply separated buyer types, and no buyer-persona labels are attached.
 
-```{r part6-pca, fig.height=5.5}
+```{r part6-pca, fig.height=6.5}
 principal_components <- prcomp(clustering$scaled_matrix)
 pca_table <- data.frame(
   PC1 = principal_components$x[, 1], PC2 = principal_components$x[, 2],
-  segment = paste0("segment_", clustering$fit$cluster)
+  segment = unname(segment_names[combustion_ids])
 )
 ggplot(pca_table, aes(PC1, PC2, colour = segment)) +
   geom_point(alpha = 0.5, size = 0.8) +
+  guides(colour = guide_legend(nrow = 3, override.aes = list(alpha = 1, size = 2))) +
   labs(title = "Combustion and hybrid vehicle segments (PCA view)", x = "Principal component 1", y = "Principal component 2") +
-  light_theme
+  light_theme + theme(legend.position = "bottom", legend.title = element_blank())
 ```
-
-The best mean silhouette width is about 0.31, and the segments overlap in the plot. They are rough descriptions of the market, not sharply separated buyer types. Two of the six combustion segments (`segment_4` and `segment_5`) are driven mostly by artifacts in the data, a brand-level popularity value and placeholder prices, so the buyer-persona labels used in the original paper are not repeated here.
 
 ## Part VII. Car recommendation and price prediction
 
@@ -413,15 +424,149 @@ tryCatch(predict_price_range(price_tools, "Volvo", 1950, 300, 4, 4, 30, 20), err
 
 These tools are fitted on all cars, so their estimates for cars in the data are not out-of-sample. The two estimates are a rough spread between two models, not a statistical prediction interval.
 
-## Summary
+## Part VIII. Business decisions: is a list price in line with the specification?
 
-- The data holds MSRP list prices of 1990 to 2017 models. The cleaned data has 11,199 unique cars.
-- Leakage of the target into ridge and lasso explained the original paper's best result. After the fix, tree ensembles are the strongest models, linear models are weak without the brand, and most of the linear improvement comes from adding Make.
-- Scores vary by up to 0.09 in R-squared between random splits, mostly because of a few very expensive cars, so averages over 10 splits are reported.
-- Brand and horsepower are the main factors in price. Popularity is a brand label, not an independent factor.
-- The market groups overlap and are best treated as rough descriptions.
+**Who this is for.** A pricing or product-planning analyst at a car manufacturer or dealer group who needs a data-based answer to one question: given a vehicle's brand and specification, is its list price in line with the market?
 
-Limitations (details in `revised/README.md`): list prices rather than resale prices; random splits rather than forecasting later model years; near-duplicate trims make the test set easier than a truly new car; an unverified placeholder-price assumption for the 748 rows at 2000 dollars; one implausible MPG row still present in the regression data; the Kaggle file was not compared with its original download.
+**What the data can and cannot support.** The data holds specifications, brand and the manufacturer's suggested retail price (MSRP) of 1990 to 2017 models. It does not hold transaction prices, sales volumes, margins, days to sell, option and trim content, or used-car values. So the analysis below supports price positioning and product planning. It cannot support decisions about discounts, inventory, financing, trade-in values or which buyers are most profitable, and no such recommendation is made.
+
+Cars at the 2,000 dollar placeholder price are left out of this part, so every figure refers to 10,451 unique cars with a plausible list price.
+
+### 8.1 How reliable is the price model?
+
+The pricing model is a random forest that predicts the logarithm of the list price from all twelve specification fields. Predicting the logarithm makes errors proportional to price, so a 6 percent error means the same thing for a 20,000 and a 200,000 dollar car. Every prediction below is out-of-fold: each car is predicted by a model that never saw it (5-fold, results saved by `run_business_analysis.R`).
+
+```{r part8-validation}
+price_validation <- read.csv(file.path("revised", "results", "price_model_validation.csv"))
+price_validation[, -1] <- round(price_validation[, -1], 3)
+price_validation
+```
+
+Adding body style, size, fuel type, transmission and drive type to the seven numeric fields plus brand lowers the typical error: the median absolute percent error falls from 7.2 to 6.3 percent and the mean absolute error from about 4,700 to about 4,000 dollars. The full-specification model is used from here on.
+
+An error interval is built from the observed out-of-fold errors, separately for three predicted-price bands. For example, the typical car in the middle band lists between 0.89 and 1.13 times its predicted price in 80 percent of cases.
+
+```{r part8-intervals}
+price_intervals <- read.csv(file.path("revised", "results", "price_error_intervals.csv"))
+price_intervals[, -1] <- round(price_intervals[, -1], 3)
+price_intervals
+```
+
+The `interval_coverage_80_percent` column above is a check on this method: intervals fitted on half of the out-of-fold errors contain the actual list price for 81 percent of the other half, close to the intended 80 percent. The model is also about equally accurate in the five combustion segments from Part VI (median error 6.0 to 6.5 percent, 70 to 74 percent of cars within 10 percent of the prediction). It is somewhat less accurate for the 66 electric cars (62 percent within 10 percent, 83 percent within 20 percent), where the sample is small:
+
+```{r part8-segment-accuracy}
+segment_accuracy <- read.csv(file.path("revised", "results", "price_error_by_segment.csv"))
+segment_accuracy[, c("median_abs_percent_error", "share_within_10_percent", "share_within_20_percent")] <- round(segment_accuracy[, c("median_abs_percent_error", "share_within_10_percent", "share_within_20_percent")], 2)
+segment_accuracy
+```
+
+```{r part8-figure-fit, echo=FALSE, out.width="70%"}
+knitr::include_graphics(normalizePath(file.path("revised", "figures", "business_predicted_vs_actual.png")))
+```
+
+Limit: folds are random, and different trims of one model are near copies of each other, so these intervals are optimistic for a genuinely new model with no close relative in the data. Treat them as a lower bound on the real uncertainty.
+
+### 8.2 Listing price checker
+
+The checker returns the expected list price, the interval, whether a given list price falls inside it, and the closest cars from other brands. It rejects values outside the data. Fitting takes under a minute.
+
+```{r part8-checker-build}
+price_data <- remove_placeholder_prices(vehicle_data)
+listing_checker <- build_listing_price_checker(price_data, interval_table = price_intervals)
+specification <- list(
+  Make = "Volvo", Year = 2016, Engine.HP = 240, Engine.Cylinders = 4, Number.of.Doors = 4,
+  highway.MPG = 30, city.mpg = 22, Vehicle.Size = "Midsize", Vehicle.Style = "Sedan",
+  Engine.Fuel.Type = "premium unleaded (recommended)", Transmission.Type = "AUTOMATIC", Driven_Wheels = "all wheel drive"
+)
+check_listing_price(listing_checker, specification, listed_price = 60000)
+```
+
+The same specification with a list price inside the interval:
+
+```{r part8-checker-inside}
+check_listing_price(listing_checker, specification, listed_price = 41000)$verdict
+```
+
+The checker rejects an unknown body style:
+
+```{r part8-checker-validation}
+tryCatch(
+  check_listing_price(listing_checker, modifyList(specification, list(Vehicle.Style = "Spaceship"))),
+  error = function(error) conditionMessage(error)
+)
+```
+
+A buyer can use the same tool to see whether a list price is typical for what they want, and the comparable cars show what other brands charge for similar specifications. A manufacturer can use it as a first screen for a planned vehicle.
+
+### 8.3 Brand premium
+
+For the same specification, how much more or less does each brand list for than Chevrolet, the largest mass-market brand in the data? The estimate comes from a regression on the log list price with brand and specification terms (model years 2012 to 2017, brands with at least 20 cars). Two sensitivity estimates are shown: all model years, and cars up to 400 horsepower. A premium is only called stable if its sign is the same in every estimate that exists for that brand.
+
+```{r part8-brand-premium}
+brand_premium <- read.csv(file.path("revised", "results", "brand_premium.csv"))
+brand_premium[, c("premium_percent", "lower_percent", "upper_percent", "premium_all_years_percent", "premium_up_to_400_hp_percent")] <- round(brand_premium[, c("premium_percent", "lower_percent", "upper_percent", "premium_all_years_percent", "premium_up_to_400_hp_percent")], 1)
+brand_premium
+```
+
+```{r part8-figure-premium, echo=FALSE, out.width="100%"}
+knitr::include_graphics(normalizePath(file.path("revised", "figures", "business_brand_premium.png")))
+```
+
+What it shows:
+
+- Ultra-luxury and sports brands list far above Chevrolet for the same specification, and the direction does not depend on the sample (Rolls-Royce, Lamborghini, Bentley, Aston Martin, Maserati, Porsche, Land Rover).
+- Among mass-market brands, Dodge, Hyundai, Scion, Kia and Nissan list below Chevrolet in the main estimate by roughly 8 to 16 percent, again with the same sign in every estimate. The size depends on the sample: for Dodge the gap is about 16 percent in the main estimate but only about 2 to 4 percent in the other two.
+- The estimate for several well-known brands changes sign depending on the sample, for example Mercedes-Benz (about +38 percent in the main estimate, about -13 percent with all years, about -29 percent for cars up to 400 horsepower), BMW, Acura and Volkswagen. Their premium depends on which models are included, so no single premium figure should be quoted for them. They are marked in orange in the figure.
+- This is an association, not a causal effect, and it ignores everything not in the data such as trim level, options and brand image. The premium is a list-price premium, not what buyers pay.
+
+### 8.4 What does the market pay for specification?
+
+From the same regression, the list price change for a step in each specification (model years 2012 to 2017, other fields held fixed):
+
+```{r part8-specification-effects}
+specification_effects <- read.csv(file.path("revised", "results", "specification_price_effects.csv"))
+specification_effects[, -1] <- round(specification_effects[, -1], 2)
+specification_effects
+```
+
+Horsepower and cylinders carry clear price weight: about 6.7 percent more list price for 10 percent more horsepower, and about 5.8 percent for one more cylinder. One model year adds only about 0.5 percent within 2012 to 2017. The door count is not precisely estimated (the interval includes zero). Highway and city MPG are highly correlated (about 0.89), so their opposite signs should not be read separately.
+
+### 8.5 Cars listed far from their specification
+
+Cars of model years 2014 to 2017 whose list price is furthest above or below the out-of-fold prediction (ratio of list price to predicted price). Cars with an imputed horsepower, cylinder count or door count are excluded.
+
+```{r part8-flags}
+flag_table <- read.csv(file.path("revised", "results", "priced_versus_specification.csv"))
+flag_table$predicted_price <- round(flag_table$predicted_price)
+flag_table$list_to_predicted_ratio <- round(flag_table$list_to_predicted_ratio, 2)
+flag_table
+```
+
+This is a review list, not a list of mistakes. The model does not see trim, options, brand positioning or performance in detail, so a high ratio may simply mean a well-equipped or specialist version, and a few rows may be data errors (for example a Mercedes-Benz C-Class coupe with 8 cylinders listed far below the prediction). The Toyota Sienna appears in three consecutive model years, each listed about 26 percent below its prediction. A pattern that repeats across model years is more informative for a pricing review than a single row.
+
+## Conclusions and recommendations
+
+**What the data supports**
+
+1. Brand and specification predict the list price of a car to within about 6 percent on the median, and 80 percent of cars fall inside a band of roughly -12 to +14 percent around the prediction. Accuracy is similar across price bands and across the five combustion segments, and somewhat lower for the 66 electric cars. (Part 8.1)
+2. Brand and horsepower are the main drivers of list price. For the same specification, ultra-luxury and sports brands list far above Chevrolet, and a few mass-market brands list below it. For several well-known brands the premium is not robust and should not be quoted as one number. (Part 5 and 8.3)
+3. The market prices power: roughly 6.7 percent more list price for 10 percent more horsepower and 5.8 percent for one more cylinder, while the model year adds little within 2012 to 2017. (Part 8.4)
+4. The original paper's best model was wrong because of target leakage. After the fix, tree ensembles are the strongest models and most of the linear improvement comes from adding the brand. (Parts 3 and 4)
+
+**Recommendations for a pricing or product-planning team**
+
+1. Use the listing price checker as a first screen, not as an automatic repricing rule. Send models whose list price is outside the interval, or very far from the prediction, to a human review. Evidence: the interval holds for 81 percent of held-out cars and works about equally well in the combustion segments. Limit: it is optimistic for new models with no close relative.
+2. Benchmark brand pricing power only against brands with a stable premium, and compare unstable brands model by model, using the comparable cars. Evidence: the sign of the premium flips for Mercedes-Benz, BMW, Acura, Volkswagen and others.
+3. In product planning, treat horsepower and cylinder count as the specifications the market visibly prices, and do not expect a model-year change alone to justify a list price increase. Evidence: Part 8.4. Limit: association within one data set of list prices.
+4. Review models that are repeatedly listed well below their specification-implied price, such as the Toyota Sienna in Part 8.5, to check whether this is a deliberate positioning choice or an opportunity. Limit: omitted trim and option information.
+5. Before using any of this for operational decisions, collect what the data lacks: transaction prices, sales volumes, days to sell, trim and option content, and used-car values. Without these, decisions about discounting, inventory and resale value cannot be supported.
+
+**Method conclusions**
+
+- Single train/test splits are unreliable here: the standard deviation of R-squared across random splits was up to 0.09 because a few very expensive cars dominate squared error, so averages over 10 splits are reported. Duplicated rows, a placeholder price, and a brand-level popularity value each distorted results until they were handled.
+- The six segments in Part VI describe where the specification mix concentrates. They overlap and are not buyer personas.
+
+**Limitations** (details in `revised/README.md`): list prices rather than transaction or resale prices; random splits rather than forecasting later model years; near-duplicate trims make the test and interval estimates optimistic; the placeholder-price assumption for 748 rows is unverified; one implausible MPG row remains in the regression data; the Kaggle file was not compared with its original download; the premium and specification effects are associations from observational list-price data.
 
 ## Reproducing this document
 
