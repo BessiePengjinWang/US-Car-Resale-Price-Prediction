@@ -126,7 +126,7 @@ What the market pays for specification (`revised/results/specification_price_eff
 
 Tested with R 4.6.1 on macOS (Apple M4 Pro, arm64), fresh package library, packages: glmnet 5.2, gbm 2.3.1, randomForest 4.7.1.2, ggplot2 4.0.4, cluster 2.1.8.3, rmarkdown 2.32, knitr 1.52, and pandoc 3.10 (the copy bundled with RStudio).
 
-1. Download `data.csv` from https://www.kaggle.com/datasets/CooperUnion/cardataset (a free Kaggle login is required) and save it as `revised/data/data.csv`. Alternatively set the environment variable `VEHICLE_DATA_PATH` to the file location. The data file is not stored in git.
+1. The data file is included in the repository as `revised/data/data.csv` (the Kaggle data set "Car Features and MSRP" by CooperUnion, https://www.kaggle.com/datasets/CooperUnion/cardataset; 1.4 MB, SHA-256 starts with 26e39d3e). To use a different copy, set the environment variable `VEHICLE_DATA_PATH` to its location. The data set's license was not checked, so confirm the terms on Kaggle before reusing the file elsewhere.
 2. Install the packages (about 1 minute):
 
 ```bash
@@ -160,7 +160,7 @@ Rscript -e 'install.packages("pagedown")'
 Rscript revised/scripts/render_report_pdf.R
 ```
 
-The PDF is written to `revised/Project-code-revised.pdf` and is not tracked by git.
+The PDF is written to `revised/Project-code-revised.pdf` and a copy is stored in the repository.
 
 From a clean clone, the six scripts reproduced every committed table and figure exactly (a rerun changed no tracked file except one figure whose random jitter had no seed; that is fixed).
 
@@ -190,7 +190,7 @@ revised/
   Project-code-revised.Rmd   business-oriented R Markdown report using the modules above
   report_print.css      print layout used for the PDF version
   scripts/              run_evaluation.R, run_clustering.R, run_demos.R, run_business_analysis.R, make_metric_figures.R, render_report_pdf.R
-  data/                 .gitkeep only, the data file is not tracked
+  data/                 data.csv (Kaggle data set) and .gitkeep
   results/              CSV tables produced by the scripts
   figures/              PNG figures with a light background
 ```
