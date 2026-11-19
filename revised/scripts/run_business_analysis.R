@@ -31,6 +31,31 @@ full_predictions <- out_of_fold_by_set$full_specification
 interval_table <- fit_error_intervals(vehicle_data$MSRP, full_predictions)
 
 premium_table <- estimate_brand_premium_with_sensitivity(imputed_data)
+recent_data <- imputed_data[imputed_data$Year >= 2012, ]
+effects_table <- estimate_specification_effects(recent_data)
+
+silhouette_table <- read.csv(file.path("revised", "results", "cluster_silhouette.csv"))
+chosen_cluster_count <- silhouette_table$cluster_count[which.max(silhouette_table$mean_silhouette)]
+vehicle_groups <- split_electric_vehicles(imputed_data)
+clustering <- cluster_combustion_vehicles(vehicle_groups$combustion, chosen_cluster_count)
+combustion_ids <- paste0("segment_", clustering$fit$cluster)
+segment_names <- name_segments(vehicle_groups$combustion, combustion_ids)
+segment_by_row <- rep(NA_character_, nrow(imputed_data))
+names(segment_by_row) <- rownames(imputed_data)
+segment_by_row[rownames(vehicle_groups$electric)] <- "electric"
+segment_by_row[rownames(vehicle_groups$combustion)] <- unname(segment_names[combustion_ids])
+relative_error <- abs(vehicle_data$MSRP / full_predictions - 1)
+error_by_segment <- do.call(rbind, lapply(sort(unique(na.omit(segment_by_row))), function(segment_name) {
+  in_segment <- !is.na(segment_by_row) & segment_by_row == segment_name
+  data.frame(
+    segment = segment_name,
+    vehicle_count = sum(in_segment),
+    median_list_price = median(vehicle_data$MSRP[in_segment]),
+    median_abs_percent_error = 100 * median(relative_error[in_segment]),
+    share_within_10_percent = mean(relative_error[in_segment] <= 0.10),
+    share_within_20_percent = mean(relative_error[in_segment] <= 0.20)
+  )
+}))
 flags <- flag_priced_versus_spec(vehicle_data, full_predictions)
 flag_table <- rbind(cbind(direction = "list price above specification", flags$above_spec), cbind(direction = "list price below specification", flags$below_spec))
 
@@ -39,6 +64,8 @@ dir.create(file.path("revised", "figures"), showWarnings = FALSE, recursive = TR
 write.csv(validation_table, file.path("revised", "results", "price_model_validation.csv"), row.names = FALSE)
 write.csv(interval_table, file.path("revised", "results", "price_error_intervals.csv"), row.names = FALSE)
 write.csv(premium_table, file.path("revised", "results", "brand_premium.csv"), row.names = FALSE)
+write.csv(effects_table, file.path("revised", "results", "specification_price_effects.csv"), row.names = FALSE)
+write.csv(error_by_segment, file.path("revised", "results", "price_error_by_segment.csv"), row.names = FALSE)
 write.csv(flag_table, file.path("revised", "results", "priced_versus_specification.csv"), row.names = FALSE)
 
 premium_plot_table <- premium_table
