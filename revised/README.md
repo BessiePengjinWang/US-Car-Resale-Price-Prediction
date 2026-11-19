@@ -1,6 +1,6 @@
 # Revised pipeline: US car price prediction
 
-This folder is a revised, modular version of the original course project (`Project-code.Rmd` and `Project-paper.pdf` in the repository root, both left untouched). The goal is the same as before: predict the price of a car from its specifications, group similar cars, and recommend cars. The changes are about making the code reusable and the evaluation trustworthy. A change-by-change comparison is in [IMPROVEMENTS.md](../IMPROVEMENTS.md).
+This folder is a revised, modular version of the original course project (`Project-code.Rmd` and `Project-paper.pdf` in the repository root, both left untouched). The goal is the same as before: predict the price of a car from its specifications, group similar cars, and recommend cars. The changes are about making the code reusable and the evaluation trustworthy, and a new part turns the models into decision support for pricing and product planning (is a list price in line with the specification?). A change-by-change comparison is in [IMPROVEMENTS.md](../IMPROVEMENTS.md).
 
 ## What this does, in plain language
 
@@ -10,6 +10,7 @@ This folder is a revised, modular version of the original course project (`Proje
 - A model is trained on 80 percent of the cars and scored on the other 20 percent it has never seen. This is repeated for 10 different random splits (seeds 1 to 10) because one split gives a noisy answer.
 - Every model is also compared with a baseline that always guesses the average price, so scores have a reference point.
 - Cars are grouped into segments with k-means clustering, and two small tools recommend similar cars and give a price range.
+- A business analysis part measures how reliable the price model is, builds a listing price checker with an error interval, estimates brand price premiums and what the market pays for horsepower and cylinders, and lists cars whose list price is far from their specification. The data holds list prices only, so it cannot support decisions about discounts, inventory or resale values (see Limitations).
 
 ## Glossary of columns
 
@@ -80,9 +81,33 @@ Reading the table:
 
 Figures of these tables: `revised/figures/metrics_r_squared.png`, `metrics_mae.png` and `metrics_r_squared_by_seed.png`.
 
-Clustering (`revised/results/cluster_profile.csv`, figures in `revised/figures/`): 66 electric cars form their own segment. The remaining 11,132 cars are split into 6 segments, chosen by silhouette width. The best mean silhouette is only 0.31, which indicates weak, overlapping groups, so the segments should be read as rough descriptions, not as sharply separated buyer types.
+Clustering (`revised/results/cluster_profile.csv`, figures in `revised/figures/`): 66 electric cars form their own segment. 748 cars at the placeholder price and one implausible row are set aside, and popularity is not used as an input because it is a brand label. The remaining 10,384 combustion and hybrid cars are split into 5 segments, chosen by mean silhouette width averaged over five subsamples (about 0.35, against about 0.34 for the next best choice). Ten re-runs with other random starts reproduce the same groups almost exactly (adjusted Rand index 0.993 or higher). Segments are named from measurable attributes (doors, cylinders, horsepower, model years), for example "Four-door, 4-cyl, ~175 HP". The groups still overlap, so they describe where the specification mix concentrates; they are not buyer personas.
+
+### Business analysis
+
+Out-of-fold results from `revised/scripts/run_business_analysis.R` (10,451 unique cars without placeholder prices; each car is predicted by a model that never saw it, 5 folds). The price model is a random forest on the logarithm of the list price using all twelve specification fields.
+
+| Check | Result |
+|---|---|
+| Median absolute percent error | 6.3 percent (7.2 percent with only the seven numeric fields plus brand) |
+| Mean absolute error | about 4,014 dollars (4,680 with the smaller feature set) |
+| R-squared in dollars | 0.863 |
+| 80 percent error interval, fitted on half the errors and tested on the other half | covers 81.4 percent of cars |
+| Interval, price band up to 20,000 | list price between 0.87 and 1.10 times the prediction |
+| Interval, price band 20,000 to 40,000 | between 0.89 and 1.13 times |
+| Interval, price band above 40,000 | between 0.88 and 1.14 times |
+| Accuracy by segment | median error 6.0 to 6.5 percent in the five combustion segments, 6.3 percent for the 66 electric cars, but only 62 percent of electric cars are within 10 percent (70 to 74 percent elsewhere) |
+
+Brand premium over Chevrolet for the same specification (model years 2012 to 2017, `revised/results/brand_premium.csv`): ultra-luxury and sports brands list far above Chevrolet in every estimate (for example Porsche about +81 percent, Land Rover about +43 percent); Dodge, Hyundai, Scion, Kia and Nissan list below it by about 8 to 16 percent in the main estimate. For 7 of 33 brands the sign changes between the main estimate and the two sensitivity estimates (for example Mercedes-Benz, BMW, Acura, Volkswagen), so no single premium is quoted for them.
+
+What the market pays for specification (`revised/results/specification_price_effects.csv`): about 6.7 percent more list price for 10 percent more horsepower, about 5.8 percent for one more cylinder, about 0.5 percent for one model year within 2012 to 2017.
 
 ## Limitations
+
+- The data holds list prices of 1990 to 2017 models. It has no transaction prices, sales volumes, margins, days to sell, trim and option content or used-car values, so it cannot support decisions about discounts, inventory, financing, trade-in values or buyer profitability.
+- The error intervals come from random folds, and different trims of one model are near copies, so they are optimistic for a genuinely new model.
+- Brand premiums and specification effects are associations in observational list-price data. They ignore options, trim and brand image, and for several brands the premium changes sign with the sample.
+- The spec-versus-price review list is a list of cars to look at, not of pricing errors. A few rows may be data errors.
 
 - MSRP is a new-car list price. The results say nothing about used-car resale values.
 - Reported results come from random splits of the same 1990 to 2017 list. They do not test predicting newer model years.
@@ -99,52 +124,37 @@ Clustering (`revised/results/cluster_profile.csv`, figures in `revised/figures/`
 
 ## How to reproduce
 
-Tested with R 4.6.1 on macOS (Apple M4 Pro, arm64), fresh package library, packages: glmnet 5.2, gbm 2.3.1, randomForest 4.7.1.2, ggplot2 4.0.4, cluster 2.1.8.3.
+Tested with R 4.6.1 on macOS (Apple M4 Pro, arm64), fresh package library, packages: glmnet 5.2, gbm 2.3.1, randomForest 4.7.1.2, ggplot2 4.0.4, cluster 2.1.8.3, rmarkdown 2.32, knitr 1.52, and pandoc 3.10 (the copy bundled with RStudio).
 
 1. Download `data.csv` from https://www.kaggle.com/datasets/CooperUnion/cardataset (a free Kaggle login is required) and save it as `revised/data/data.csv`. Alternatively set the environment variable `VEHICLE_DATA_PATH` to the file location. The data file is not stored in git.
 2. Install the packages (about 1 minute):
 
 ```bash
-Rscript -e 'install.packages(c("glmnet", "gbm", "randomForest", "ggplot2", "cluster"))'
+Rscript -e 'install.packages(c("glmnet", "gbm", "randomForest", "ggplot2", "cluster", "rmarkdown", "scales"))'
 ```
 
-3. From the repository root, run the evaluation over 10 seeds using 5 worker processes (3.4 minutes measured):
+3. From the repository root, run the scripts in this order. Every script reads the data file and the results of the scripts before it, and writes to `revised/results/` and `revised/figures/`. Measured from a clean clone with a fresh package library:
 
-```bash
-Rscript revised/scripts/run_evaluation.R 10 5 main
-```
+| Step | Command | Measured time |
+|---|---|---|
+| Evaluation over 10 seeds (5 worker processes) | `Rscript revised/scripts/run_evaluation.R 10 5 main` | 197 s |
+| Evaluation without placeholder prices | `Rscript revised/scripts/run_evaluation.R 10 5 no_placeholder exclude_placeholder_prices` | 195 s |
+| Clustering | `Rscript revised/scripts/run_clustering.R` | 4 s |
+| Recommendation and price range demos | `Rscript revised/scripts/run_demos.R` | 6 s |
+| Business analysis (out-of-fold price model, brand premium, flags) | `Rscript revised/scripts/run_business_analysis.R` | 243 s |
+| Metric comparison figures | `Rscript revised/scripts/make_metric_figures.R` | 1 s |
 
-4. Run the sensitivity evaluation without placeholder prices (3.2 minutes measured):
-
-```bash
-Rscript revised/scripts/run_evaluation.R 10 5 no_placeholder exclude_placeholder_prices
-```
-
-5. Run the clustering (2 seconds measured) and the demos for recommendation and price range (5 seconds measured):
-
-```bash
-Rscript revised/scripts/run_clustering.R
-```
-
-```bash
-Rscript revised/scripts/run_demos.R
-```
-
-6. Draw the metric comparison figures from the saved result tables (a few seconds, needs no data file):
-
-```bash
-Rscript revised/scripts/make_metric_figures.R
-```
-
-Measured total from a clean clone with a fresh package library, excluding package installation: 400 seconds (about 6.7 minutes). Results are written to `revised/results/` and figures to `revised/figures/`.
-
-## R Markdown report
-
-`revised/Project-code-revised.Rmd` repeats the seven parts of the original paper (data exploration, predictor selection, model fitting, comparison, influential factors, clustering, recommendation and price prediction) with the revised functions. The 10-seed tables and the figures are read from `revised/results/` and `revised/figures/`, so run steps 3 to 5 above first. Rendering needs rmarkdown and pandoc and takes about 1 minute (measured 68 seconds, pandoc 3.9):
+4. Render the report (needs rmarkdown and pandoc; RStudio bundles pandoc and its Knit button needs no setup). The report reads the tables and figures from step 3 and fits the listing price checker once (about 45 seconds):
 
 ```bash
 Rscript -e 'rmarkdown::render("revised/Project-code-revised.Rmd")'
 ```
+
+From a clean clone, the six scripts reproduced every committed table and figure exactly (a rerun changed no tracked file except one figure whose random jitter had no seed; that is fixed).
+
+## R Markdown report
+
+`revised/Project-code-revised.Rmd` is a business-oriented report: the question and data, data checks that changed the numbers, how well list prices can be predicted, what drives list price (brand premium, specification effects), a listing price checker with a review list, market segments, and conclusions with recommendations. Every table and number is read from `revised/results/` or computed live, and each result is followed by a plain-language statement of what it means. Code is folded by default in the HTML output. The recommendation and price range demos from the original project remain available in `revised/scripts/run_demos.R` and are not part of the report.
 
 ## Repository structure
 
@@ -163,9 +173,10 @@ revised/
     clustering.R        k-means segments
     recommend.R         nearest-vehicle recommender
     predict_price.R     price range tool with input checks
+    pricing.R           listing price checker, error intervals, brand premium, specification effects, review list
     load_all.R          loads all modules
-  Project-code-revised.Rmd   R Markdown report in the structure of the paper, using the modules below
-  scripts/              run_evaluation.R, run_clustering.R, run_demos.R, make_metric_figures.R
+  Project-code-revised.Rmd   business-oriented R Markdown report using the modules above
+  scripts/              run_evaluation.R, run_clustering.R, run_demos.R, run_business_analysis.R, make_metric_figures.R
   data/                 .gitkeep only, the data file is not tracked
   results/              CSV tables produced by the scripts
   figures/              PNG figures with a light background
